@@ -1,3 +1,6 @@
+## Code that tests Earlier planting's potential as an adaptation strategy for climate change
+### Code written by: Supriya Savalkar ###
+
 library(tidyverse, warn.conflicts = FALSE)
 library(future, warn.conflicts = FALSE)
 library(lubridate, warn.conflicts = FALSE)
