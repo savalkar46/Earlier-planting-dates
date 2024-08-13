@@ -9,4 +9,4 @@ Step 3: This folder contains the codes that are used to determine the Wasserstei
 
 Step 4: This folder contains the code that is used to create the plots which are in the paper.
 
-The codes for this study can be used to replicate the work for any other crop if we know the growth stage specific GDD and also the sensitivty of the growth stage to various temperature categories which are the temperature thresholds.
+The codes from this study can be used to replicate the work for any other crop if we know the growth stage specific GDD and also the sensitivty of the growth stage to various temperature categories which are the temperature thresholds.
