@@ -1,4 +1,4 @@
-## Code that tests Earlier planting's potential as an adaptation strategy for climate change_palette
+## Code that tests Earlier planting's potential as an adaptation strategy for climate change
 ### Code written by: Supriya Savalkar ###
 ## Code to obtain the fraction of time the crop spends in growth stage and temperature category combination
 
