@@ -1,3 +1,6 @@
+## Code that tests Earlier planting's potential as an adaptation strategy for climate change
+### Code written by: Supriya Savalkar ###
+
 import numpy as np
 import pandas as pd
 import pyreadr
