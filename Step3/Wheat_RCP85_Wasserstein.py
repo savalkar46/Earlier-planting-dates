@@ -29,7 +29,7 @@ for idx in Wheat.index:
     # Vector with percentage changes by growth stage
     future = Wheat.loc[idx, col_]
 
-    dist = wasserstein_distance(np.arange(7), np.arange(7), optimal, future)  # Calculate Euclidean distance
+    dist = wasserstein_distance(np.arange(7), np.arange(7), optimal, future)  # Calculate Wasserstein distance
     Wheat.loc[idx, "dist"] = dist
 	
 pyreadr.write_rds('/weka/data/project/agaid/supriya/Planting_Date/Tradeoff/Wheat/Wheat_RCP85_Wasserstein.rds', Wheat)
