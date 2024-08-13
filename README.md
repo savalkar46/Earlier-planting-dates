@@ -5,8 +5,9 @@ Step 1:
 
 Step 2:
 
-Step 3: This step determines the Wasserstein distance between future temperature exposure for every growth stage, time frame, emission scenario, and planting dates (traditional and advanced) and the historical temperature exposure for traditional planting dates. 
+Step 3: This folder contains the codes that are used to determine the Wasserstein distance between future temperature exposure for every growth stage, time frame, emission scenario, and planting dates (traditional and advanced) and the historical temperature exposure for traditional planting dates. 
 
-Step 4:
+Step 4: This folder contains the code that is used to create the plots which are in the paper.
+
 
 
