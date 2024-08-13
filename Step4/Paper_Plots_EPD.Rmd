@@ -1,0 +1,935 @@
+---
+title: "Early_Planting_Dates"
+author: "Supriya Savalkar"
+date: "2024-05-13"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+## load packages
+library(tidyverse)
+library(data.table)
+library(tidyr)
+library(dplyr)
+library(readr)
+library(ggplot2)
+library(hrbrthemes)
+library(viridis)
+library(ggpubr)
+library(gridExtra)
+library(grid)
+library(viridis)
+library(RColorBrewer)
+library(raster)
+library(sf)
+library(terra)
+library(rgdal)
+library(data.table)
+library(hrbrthemes)
+library(RColorBrewer)
+```
+
+## Loading data for plots Fig 3 and 4
+```{r}
+Scaling <- read.csv("E:/Adaptation_Potential/07_PaperDraft/Figures/Scaling.csv")
+
+Scaling$Temp_category <- factor(Scaling$Temp_category , levels = c("LL","CL", "SOL", "OT", "SOH", "CH", "LH"))
+Scaling <- Scaling |> 
+  mutate(Pheno_Stage = case_when(Pheno_Stage=='Emergence/Root_growth' ~ 'Emergence',
+                                 Pheno_Stage=='Tillering/Shoot_growth' ~ 'Tillering',
+                                 Pheno_Stage=='Jointing/Leaf_inititation' ~ 'Jointing',
+                                 Pheno_Stage=='Heading/Terminal_Spikelet' ~ 'Heading',
+                                 Pheno_Stage=='Flowering/Anthesis' ~ 'Flowering',
+                                 Pheno_Stage=='Milking_Dough/Grainfill' ~ 'Grain fill',
+                                 Pheno_Stage=='Maturity/Grainfill' ~ 'Maturity'))
+
+Scaling$Pheno_Stage <- factor(Scaling$Pheno_Stage, levels = c("Emergence", "Tillering", "Jointing", "Heading",
+                                                              "Flowering","Grain fill","Maturity"))
+
+Scaling$Climate<- factor(Scaling$Climate, levels = c("Historical", "Future"))
+
+Diff_data <- Scaling |>
+  dplyr::select("lat", "lon", "PD", "Pheno_Stage","climate_proj", "Temp_category", "PD_time", "Climate", "scaled" )
+
+hist <- Diff_data |> filter(PD_time=="Early April", Climate == "Historical")
+future <- Diff_data |> filter(PD_time %in% c("Early April", "Mid March"), Climate == "Future")
+
+Diff_data2 <- left_join(future, hist, 
+                        by=c("lat"="lat", "lon"= "lon",
+                             "Pheno_Stage"="Pheno_Stage", "Temp_category"="Temp_category")) |>
+  filter(PD.x %in% c("PD1", "EP4")) |>
+  mutate(ScaleX=ceiling(scaled.x),
+         ScaleY=ceiling(scaled.y)) |> 
+  mutate(Med_Diff=(ScaleX-ScaleY))
+
+Diff_data2[is.na(Diff_data2)] <- 0
+
+Diff_data2$Temp_category <- factor(Diff_data2$Temp_category , levels = c("LL","CL", "SOL", "OT", "SOH", "CH", "LH"))
+
+Diff_data2$Pheno_Stage <- factor(Diff_data2$Pheno_Stage, levels = c("Emergence", "Tillering", "Jointing", "Heading",
+                                                              "Flowering","Grain fill","Maturity"))
+
+Diff_data2 <- Diff_data2 |>
+  mutate(PD_time = case_when(
+    PD.x=='PD1' ~ 'Early April',
+    PD.x=='EP4' ~ 'Mid March'))
+
+Diff_data2$PD_time <- factor(Diff_data2$PD_time, levels=c("Early April", "Mid March"))
+```
+
+## Figure 3: Sample temperature exposure for a grid
+```{r}
+## single plot in the paper is for a different grid
+
+Single_tempexp <- ggplot((Scaling |> filter(PD=="PD1", climate_proj=="historical")), 
+                         aes(y=Pheno_Stage, x=Temp_category, fill=ceiling(scaled)))+
+  geom_tile()+ scale_fill_gradient(low = "white", high = "slateblue") +
+  geom_text(aes(label = ceiling(scaled)), color = "black", size = 4,face = "bold")+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(),
+        text = element_text(size = 12))+
+  theme(axis.text.x = element_text(angle = 90,size = 12,face = "bold",colour = "black", hjust = 0.5),
+        axis.text.y = element_text(size = 12,face = "bold",colour = "black"),
+        axis.title.x = element_text(size = 12,face = "bold",colour = "black"),
+        axis.title.y.left = element_text(size = 12,face = "bold",colour = "black"),
+        strip.text = element_text(size = 15,face="bold"), legend.text = element_text(size=15)) +
+  xlab("Temperature Category")+
+  ylab("Phenological Stage")
+
+Single_tempexp
+
+```
+
+## Figure 4: Sample temperature exposure signatures and changes in exposures
+
+```{r}
+Early_trad_future_hist <- ggplot(Scaling, aes(y=Pheno_Stage, x=Temp_category, fill=ceiling(scaled)))+
+  geom_tile()+ scale_fill_gradient(low = "white", high = "slateblue") +
+  geom_text(aes(label = ceiling(scaled)), color = "black", size = 4,face = "bold")+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(),
+        text = element_text(size = 12))+
+  theme(axis.text.x = element_text(angle = 90,size = 12,face = "bold",colour = "black", hjust = 0.5),
+        axis.text.y = element_text(size = 14,face = "bold",colour = "black"),
+        axis.title.x = element_text(size = 12,face = "bold",colour = "black"),
+        axis.title.y.left = element_text(size = 12,face = "bold",colour = "black"),
+        strip.text = element_text(size = 15,face="bold"), legend.text = element_text(size=15)) +
+  xlab("Temperature Category")+
+  ylab("")+
+  facet_wrap(~Climate+PD_time)
+
+Diff_plot <- ggplot(Diff_data2, aes(y=Pheno_Stage, x=Temp_category, fill=Med_Diff))+
+  geom_tile()+ scale_fill_gradient2(midpoint = 0, low = "blue", mid = "white", high = "red")  +
+  geom_text(aes(label = (Med_Diff)), color = "black", size = 4,face = "bold")+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(),
+        text = element_text(size = 12))+
+  theme(axis.text.x = element_text(angle = 90,size = 12,face = "bold",colour = "black", hjust = 0.5),
+        axis.text.y = element_text(size = 12,face = "bold",colour = "black"),
+        axis.title.x = element_text(size = 12,face = "bold",colour = "black"),
+        axis.title.y.left = element_text(size = 12,face = "bold",colour = "black"),
+        strip.text = element_text(size = 15,face="bold"), legend.text = element_text(size=15)) +
+  xlab("Temperature Category")+
+  ylab("")+
+  facet_wrap(~PD_time)
+
+Early_trad_future_hist
+
+Diff_plot
+
+
+```
+## Figure 5:A hypothetical example demonstrating the distribution of temperature exposures 
+
+```{r}
+boxplot_data <- read.csv("E:/Adaptation_Potential/07_PaperDraft/Figures/boxplot.csv")
+boxplot_data$Temp_category <- factor(boxplot_data$Temp_category , levels = c("LL","CL", "SOL", "OT", "SOH", "CH", "LH"))
+boxplot_data$Case <- factor(boxplot_data$Case, 
+                            levels = c("Optimal exposure expected from any planting date", "Historic exposure with traditional planting date",
+                                       "Future exposure with traditional planting date", "Future exposure with earlier planting date"))
+
+bar_plot <- ggplot(boxplot_data, aes(x=Temp_category, y=scaled, fill=Case)) +
+  geom_bar(stat="identity", position = "dodge") +
+  scale_fill_manual(values=c("#117733","#330000","#E69F00","#332288"),
+                    labels=c("Optimal exposure expected \n from any planting date", 
+                             "Historic exposure with \n traditional planting date", 
+                             "Future exposure with \n traditional planting date", 
+                             "Future exposure with \n earlier planting date")) +
+  theme_bw() +
+  theme(strip.background = element_rect(fill="white")) +
+  ylab("Percent time in each temperature category") +
+  xlab("Temperature category") +
+  theme(strip.text = element_text(colour = "black")) +
+  theme(axis.text.x = element_text(angle = 90, size = 12, face = "bold", colour = "black", hjust = 1),
+        axis.text.y = element_text(size = 10, face = "bold", colour = "black"),
+        axis.title.x = element_text(size = 12, face = "bold", colour = "black"),
+        axis.title.y.left = element_text(size = 12, face = "bold", colour = "black"),
+        strip.text = element_text(size = 12, face = "bold"), 
+        legend.text = element_text(size=12),
+        legend.position = "bottom")
+
+bar_plot
+```
+## This is the data for Figure 7:Increase or decrease in the percentage of future exposure to critical and lethal temperatures across multiple planting dates as compared to historical exposure. 
+
+```{r}
+## this is a boxplot that focuses pn griowth stages that get affected by critical and lethal high tempoeratures.
+
+Wheat_diff <- readRDS("E:/Adaptation_Potential/05_Analysis/Data/Extracted_OL_July2023/Future/Wheat_PD_Diff.rds")
+
+## Top states
+Cropland <- read.csv("E:/Adaptation_Potential/01_Data_GIS/Shapefiles/Agland_Grids_State_county/Cropland_file.csv")
+
+## Joint with the Distance file
+Wheat_diff_filter <- Wheat_diff |> left_join(Cropland, by=c("lat"="lat", "lon"="lon","Grid_ID"="Grid_ID"))
+
+Wheat_diff_topstate <- Wheat_diff_filter |> 
+  filter(State %in% c("Washington", "Idaho", "Oregon", "Montana",
+                      "Wyoming", "North Dakota", "South Dakota",
+                      "Minnesota")) |> 
+  filter(Temp_category %in% c("CH", "LH")) |>
+  mutate(Timeframe = case_when(
+    Case=='Wheat_Overlap_2025_2055' ~ '2040s',
+    Case=='Wheat_Overlap_2045_2075' ~ '2060s',
+    Case=='Wheat_Overlap_2065_2095' ~ '2080s')) |> 
+  filter(Pheno_Stage %in% c("Heading/Terminal_Spikelet", "Flowering/Anthesis","Milking_Dough/Grainfill",
+                    "Maturity/Grainfill"))
+
+PD1 <- Wheat_diff_topstate |> filter(PD %in% c("EP1", "EP2", "EP3", "EP4", "EP5", "EP6", "PD1")) |> 
+  dplyr::select("lat", "lon", "PD", "Pheno_Stage", "Temp_category", "PD1_Diff", "State", "Timeframe") |> 
+  mutate(wrtPD="Early") |> 
+  rename('Difference' = 'PD1_Diff')
+
+PD2 <- Wheat_diff_topstate |> filter(PD %in% c("EP1", "EP2", "EP3", "EP4", "EP5", "EP6", "PD1", "EP7", "PD2")) |> 
+  dplyr::select("lat", "lon", "PD", "Pheno_Stage", "Temp_category", "PD2_Diff", "State", "Timeframe") |> 
+  mutate(wrtPD="Active1") |> 
+  rename('Difference' = 'PD2_Diff')
+
+PD3 <- Wheat_diff_topstate |> 
+  filter(PD %in% c("EP1", "EP2", "EP3", "EP4", "EP5", "EP6", "PD1", "EP7", "PD2",
+                   "EP8", "EP9", "EP10","EP11", "EP12", "PD3")) |> 
+  dplyr::select("lat", "lon", "PD", "Pheno_Stage", "Temp_category", "PD3_Diff", "State", "Timeframe") |> 
+  mutate(wrtPD="Active2") |> 
+  rename('Difference' = 'PD3_Diff')
+
+PD4 <- Wheat_diff_topstate |> 
+  filter(PD %in% c("EP1", "EP2", "EP3", "EP4", "EP5", "EP6", "PD1", "EP7", "PD2",
+                   "EP8", "EP9", "EP10","EP11", "EP12", "PD3", "EP13", "PD4")) |> 
+  dplyr::select("lat", "lon", "PD", "Pheno_Stage", "Temp_category", "PD4_Diff", "State", "Timeframe") |> 
+  mutate(wrtPD="Late") |> 
+  rename('Difference' = 'PD4_Diff')
+
+PD <- rbind(PD1, PD2, PD3, PD4)
+
+PD$PD <- factor(PD$PD, levels = c("EP1", "EP2", "EP3", "EP4", "EP5", "EP6", "PD1", "EP7", "PD2",
+                                  "EP8", "EP9", "EP10","EP11", "EP12", "PD3", "EP13", "PD4"))
+
+PD$Pheno_Stage <- factor(PD$Pheno_Stage , 
+                         levels = c("Heading/Terminal_Spikelet", "Flowering/Anthesis","Milking_Dough/Grainfill",
+                                    "Maturity/Grainfill"))
+
+PD$wrtPD <- factor(PD$wrtPD , 
+                         levels = c("Early", "Active1", "Active2", "Late"))
+
+PD <- PD |> mutate(growthstage = case_when(
+  Pheno_Stage == 'Emergence/Root_growth' ~ 'Emergence',
+  Pheno_Stage == 'Tillering/Shoot_growth' ~ 'Tillering',
+  Pheno_Stage == 'Jointing/Leaf_inititation' ~ 'Jointing',
+  Pheno_Stage == 'Heading/Terminal_Spikelet' ~ 'Heading',
+  Pheno_Stage == 'Flowering/Anthesis' ~ 'Flowering',
+  Pheno_Stage == 'Milking_Dough/Grainfill' ~ 'Grain fill',
+  Pheno_Stage == 'Maturity/Grainfill' ~ 'Maturity'))
+
+PD$growthstage <- factor(PD$growthstage , 
+                         levels = c("Emergence","Tillering","Jointing","Heading", "Flowering","Grain fill",
+                                    "Maturity"))
+
+```
+
+##Figure 7a: Question 1: for critical highs
+```{r}
+PD_new <- PD |> filter(Timeframe %in% c("2040s", "2080s"))
+
+Plot <- ggplot(PD_new, aes(y = Difference, x = PD, fill = Timeframe)) + 
+  stat_boxplot(geom = "errorbar") +
+  geom_boxplot(outlier.shape = NA, width=1, size=0.5) + 
+  geom_hline(yintercept = -0.5, linetype = "dashed", color = "red", size = 0.5) +
+  xlab("Planting Date") +
+  ylab("Increase or decrease in fraction of critical and lethal high temperatures") +
+  ylim(-30, 40) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    text = element_text(size = 12),
+    axis.text.x = element_text(angle = 90, size = 12, colour = "black", hjust = 0.50),
+    axis.text.y = element_text(size = 12, colour = "black"),
+    axis.title.x = element_text(size = 12, face = "bold", colour = "black"),
+    axis.title.y.left = element_text(size = 12, face = "bold", colour = "black"),
+    strip.text = element_text(face = "bold", size = 16),
+    legend.text = element_text(size = 16, face = "bold", colour = "black"),
+    legend.title = element_blank(),
+    legend.position = "bottom",
+    legend.direction = "horizontal") +
+  scale_fill_manual(values = c("#E69F00","#6699CC"))+
+  facet_grid(wrtPD ~ growthstage)
+
+Plot
+```
+
+##Figure 7b: Question 1: for critical lows
+```{r}
+Wheat_diff_filter <- Wheat_diff |> left_join(Cropland, by=c("lat"="lat", "lon"="lon","Grid_ID"="Grid_ID"))
+
+Wheat_diff_topstate <- Wheat_diff_filter |> 
+  filter(State %in% c("Washington", "Idaho", "Oregon", "Montana",
+                      "Wyoming", "North Dakota", "South Dakota",
+                      "Minnesota")) |> 
+  filter(Temp_category %in% c("CL", "LL")) |>
+  mutate(Timeframe = case_when(
+    Case=='Wheat_Overlap_2025_2055' ~ '2040s',
+    Case=='Wheat_Overlap_2045_2075' ~ '2060s',
+    Case=='Wheat_Overlap_2065_2095' ~ '2080s')) |> 
+  filter(Pheno_Stage %in% c("Emergence/Root_growth", "Tillering/Shoot_growth"))
+
+PD1 <- Wheat_diff_topstate |> filter(PD %in% c("EP1", "EP2", "EP3", "EP4", "EP5", "EP6", "PD1")) |> 
+  dplyr::select("lat", "lon", "PD", "Pheno_Stage", "Temp_category", "PD1_Diff", "State", "Timeframe") |> 
+  mutate(wrtPD="Early") |> 
+  rename('Difference' = 'PD1_Diff')
+
+PD2 <- Wheat_diff_topstate |> filter(PD %in% c("EP1", "EP2", "EP3", "EP4", "EP5", "EP6", "PD1", "EP7", "PD2")) |> 
+  dplyr::select("lat", "lon", "PD", "Pheno_Stage", "Temp_category", "PD2_Diff", "State", "Timeframe") |> 
+  mutate(wrtPD="Active1") |> 
+  rename('Difference' = 'PD2_Diff')
+
+PD3 <- Wheat_diff_topstate |> 
+  filter(PD %in% c("EP1", "EP2", "EP3", "EP4", "EP5", "EP6", "PD1", "EP7", "PD2",
+                   "EP8", "EP9", "EP10","EP11", "EP12", "PD3")) |> 
+  dplyr::select("lat", "lon", "PD", "Pheno_Stage", "Temp_category", "PD3_Diff", "State", "Timeframe") |> 
+  mutate(wrtPD="Active2") |> 
+  rename('Difference' = 'PD3_Diff')
+
+PD4 <- Wheat_diff_topstate |> 
+  filter(PD %in% c("EP1", "EP2", "EP3", "EP4", "EP5", "EP6", "PD1", "EP7", "PD2",
+                   "EP8", "EP9", "EP10","EP11", "EP12", "PD3", "EP13", "PD4")) |> 
+  dplyr::select("lat", "lon", "PD", "Pheno_Stage", "Temp_category", "PD4_Diff", "State", "Timeframe") |> 
+  mutate(wrtPD="Late") |> 
+  rename('Difference' = 'PD4_Diff')
+
+PD <- rbind(PD1, PD2, PD3, PD4)
+
+PD$PD <- factor(PD$PD, levels = c("EP1", "EP2", "EP3", "EP4", "EP5", "EP6", "PD1", "EP7", "PD2",
+                                  "EP8", "EP9", "EP10","EP11", "EP12", "PD3", "EP13", "PD4"))
+
+PD$Pheno_Stage <- factor(PD$Pheno_Stage , 
+                         levels = c("Emergence/Root_growth", "Tillering/Shoot_growth","Jointing/Leaf_inititation"))
+
+PD$wrtPD <- factor(PD$wrtPD , 
+                         levels = c("Early", "Active1", "Active2", "Late"))
+
+
+PD <- PD |> mutate(growthstage = case_when(
+  Pheno_Stage == 'Emergence/Root_growth' ~ 'Emergence',
+  Pheno_Stage == 'Tillering/Shoot_growth' ~ 'Tillering',
+  Pheno_Stage == 'Jointing/Leaf_inititation' ~ 'Jointing',
+  Pheno_Stage == 'Heading/Terminal_Spikelet' ~ 'Heading',
+  Pheno_Stage == 'Flowering/Anthesis' ~ 'Flowering',
+  Pheno_Stage == 'Milking_Dough/Grainfill' ~ 'Grain fill',
+  Pheno_Stage == 'Maturity/Grainfill' ~ 'Maturity'))
+
+PD_new <- PD |> pivot_wider(names_from = Temp_category, values_from = Difference)
+PD_new[is.na(PD_new)] <- 0
+PD_new <- PD_new |> 
+  mutate(Low=CL+LL) |> 
+  dplyr::select("lat", "lon","PD","Pheno_Stage","State","Timeframe", "wrtPD","growthstage", "Low")
+
+PD_new <- PD_new |> filter(Timeframe %in% c("2040s", "2080s"))
+PD_new$growthstage <- factor(PD_new$growthstage , 
+                         levels = c("Emergence", "Tillering"))
+
+Plot <- ggplot(PD_new, aes(y = Low, x = PD, fill = Timeframe)) + 
+  stat_boxplot(geom = "errorbar") +
+  geom_boxplot(outlier.shape = NA) + 
+  geom_hline(yintercept = -0.5, linetype = "dashed", color = "red", size = 0.5) +
+  xlab("Planting Date") +
+  ylab("Increase or decrease in fraction of critical and lethal low temperatures") +
+  ylim(-30, 40) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    text = element_text(size = 12),
+    axis.text.x = element_text(angle = 90, size = 12, colour = "black", hjust = 0.50),
+    axis.text.y = element_text(size = 12, colour = "black"),
+    axis.title.x = element_text(size = 12, face = "bold", colour = "black"),
+    axis.title.y.left = element_text(size = 12, face = "bold", colour = "black"),
+    strip.text = element_text(face = "bold", size = 16),
+    legend.text = element_text(size = 16, face = "bold", colour = "black"),
+    legend.title = element_blank(),
+    legend.position = "bottom",
+    legend.direction = "horizontal") +
+  scale_fill_manual(values = c("#E69F00","#6699CC"))+
+  facet_grid(wrtPD ~ growthstage)
+
+Plot
+```
+
+## Figure 8: Difference in Wasserstein distance for future conditions as compared to historical levels for all growth stages and multiple future planting dates.
+## Change data for RCP4.5 accordingly
+
+```{r}
+## Plotting value of difference of distance
+## Need to change the the rcp8.5 to rcp4.5 file to plot the rcp4.5 plots
+## backgroun for maps
+background <- readOGR("E:/Adaptation_Potential/01_Data_GIS/Shapefiles/Heatzone/Top_wheat_states.shp")
+plot(background)
+background2 <- readOGR("E:/Adaptation_Potential/01_Data_GIS/Shapefiles/Heatzone/USDA_Climate_Hub_merge.shp")
+
+## Wasserstein distance plots
+## Load the output from python
+Hist_WD <- readRDS("E:/Adaptation_Potential/05_Analysis/Data/Extracted_OL_July2023/Distance/Wheat_Historic_Wasserstein.rds") |>
+  dplyr::select("lat", "lon", "PD", "Pheno_Stage", "climate_proj", "Grid_ID", "dist") |> 
+  filter(PD %in% c("PD1", "PD2", "PD3","PD4")) |> 
+  pivot_wider(names_from=PD, values_from = dist)
+
+Hist_WD$Grid_ID <- gsub(".rds", "", Hist_WD$Grid_ID)
+
+RCP85_WD <- readRDS("E:/Adaptation_Potential/05_Analysis/Data/Extracted_OL_July2023/Distance/Wheat_RCP85_Wasserstein.rds") |> 
+  dplyr::select("lat", "lon", "PD", "Pheno_Stage", "climate_proj", "Grid_ID", "Case", "dist")
+
+Distance <- RCP85_WD |> left_join(Hist_WD, by=c("lat"="lat", "lon"="lon","Pheno_Stage"="Pheno_Stage","Grid_ID"="Grid_ID"))
+## Now join the cropland data layer
+Cropland <- read.csv("E:/Adaptation_Potential/01_Data_GIS/Shapefiles/Agland_Grids_State_county/Cropland_file.csv")
+
+## Joint with the Distance file
+Dist_filter <- Distance |> left_join(Cropland, by=c("lat"="lat", "lon"="lon","Grid_ID"="Grid_ID"))
+## Select only the major Spring Wheat counties
+Dist_topstate <- Dist_filter |> filter(State %in% c("Washington", "Idaho", "Oregon", "Montana",
+                                                    "Wyoming", "North Dakota", "South Dakota",
+                                                    "Minnesota"))
+
+## Plot for PD1
+PD1_dist <- Dist_topstate |> filter(PD %in% c("EP1", "EP2", "EP3", "EP4", "EP5", "EP6", "PD1")) |>
+  mutate(PD1_diff=(dist-PD1),
+         Timeframe = case_when(Case=='Wheat_Overlap_2025_2055' ~ '2040s',
+                               Case=='Wheat_Overlap_2045_2075' ~ '2060s',
+                               Case=='Wheat_Overlap_2065_2095' ~ '2080s'),
+         far_near=case_when(PD1_diff<=-0.20~'< -0.20',
+                            -0.20<PD1_diff & PD1_diff<=-0.10~'-0.20 to -0.10',
+                            -0.10<PD1_diff & PD1_diff<0~'-0.10 to 0',
+                            PD1_diff==0~'0',
+                            0<PD1_diff & PD1_diff<=0.10~'0 to 0.10',
+                            0.10<PD1_diff & PD1_diff<=0.20~'0.10 to 0.20',
+                            PD1_diff>0.20~'> 0.20')) |>
+  na.omit()
+
+
+PD1_dist$PD <- factor(PD1_dist$PD, levels = c("EP1", "EP2", "EP3", "EP4", "EP5", "EP6", "PD1"))
+
+PD1_dist$far_near <- factor(PD1_dist$far_near, levels = c("< -0.20", "-0.20 to -0.10", "-0.10 to 0", "0","0 to 0.10",
+                                                          "0.10 to 0.20", "> 0.20"))
+
+PD1_dist$Pheno_Stage <- factor(PD1_dist$Pheno_Stage , 
+                               levels = c("Emergence/Root_growth", "Tillering/Shoot_growth","Jointing/Leaf_inititation",
+                                          "Heading/Terminal_Spikelet", "Flowering/Anthesis","Milking_Dough/Grainfill",
+                                          "Maturity/Grainfill"))
+
+individual_plot = unique(PD1_dist$Timeframe)
+for(i in individual_plot){
+  Plot<- ggplot((data=subset(PD1_dist, Timeframe == i)), aes(y= lat, x= lon, fill= far_near)) + 
+    geom_tile(width=0.20, height=0.20)+
+    scale_fill_manual(values = c("darkblue","steelblue1","lightskyblue1","darkgreen",
+                                 "peachpuff", "tomato", "brown4"))+
+    # geom_polygon(data = fortify(background2), aes(x=long, y=lat, group=group), fill = NA,
+    #              colour = alpha("black"), size = 1)+
+    #borders("state",xlim = c(-125, -100), ylim = c(42.5,48.5))+ coord_quickmap()+
+    geom_polygon(data = fortify(background), aes(x=long, y=lat, group=group), fill = NA,
+                 colour = alpha("black"), size = 0.5)+
+    theme_bw() +
+    theme(
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      text = element_text(size = 12),
+      axis.text.x = element_text(angle = 0, size = 8, colour = "black", hjust = 0.5),
+      axis.text.y = element_text(size = 8, colour = "black"),
+      axis.title.x = element_text(size = 8, face = "bold", colour = "black"),
+      axis.title.y.left = element_text(size = 8, face = "bold", colour = "black"),
+      strip.text = element_text(face = "bold", size=8),
+      legend.text = element_text(size = 8, face = "bold", colour = "black"),
+      legend.title = element_blank(),
+      legend.position = "bottom",
+      legend.direction = "horizontal")+
+    guides(fill = guide_legend(ncol = 4))+
+    ylab(" ") +
+    xlab("")+
+    facet_grid(PD~Pheno_Stage)+
+    ggtitle(i)
+  
+  ggsave(Plot, file=paste0("E:/Adaptation_Potential/05_Analysis/Plots/Distance/Wasserstein/Top_state/PD1_Topstate_", i,".jpeg"), width = 30, height = 15, units = "cm")
+}
+
+## Plot for PD2
+PD2_dist <- Dist_topstate |> filter(PD %in% c("EP1", "EP2", "EP3", "EP4", "EP5", "EP6", "PD1", "EP7", "PD2")) |>
+  mutate(PD2_diff=round(dist-PD2, 2),
+         Timeframe = case_when(Case=='Wheat_Overlap_2025_2055' ~ '2040s',
+                               Case=='Wheat_Overlap_2045_2075' ~ '2060s',
+                               Case=='Wheat_Overlap_2065_2095' ~ '2080s'),
+         far_near=case_when(PD2_diff<=-0.20~'< -0.20',
+                            -0.20<PD2_diff & PD2_diff<=-0.10~'-0.20 to -0.10',
+                            -0.10<PD2_diff & PD2_diff<0~'-0.10 to 0',
+                            PD2_diff==0~'0',
+                            0<PD2_diff & PD2_diff<=0.10~'0 to 0.10',
+                            0.10<PD2_diff & PD2_diff<=0.20~'0.10 to 0.20',
+                            PD2_diff>0.20~'> 0.20')) |>
+  na.omit()
+
+
+PD2_dist$PD <- factor(PD2_dist$PD, levels = c("EP1", "EP2", "EP3", "EP4", "EP5", "EP6", "PD1", "EP7", "PD2"))
+
+PD2_dist$far_near <- factor(PD2_dist$far_near, levels = c("< -0.20", "-0.20 to -0.10", "-0.10 to 0", "0","0 to 0.10",
+                                                          "0.10 to 0.20", "> 0.20"))
+
+PD2_dist$Pheno_Stage <- factor(PD2_dist$Pheno_Stage , 
+                               levels = c("Emergence/Root_growth", "Tillering/Shoot_growth","Jointing/Leaf_inititation",
+                                          "Heading/Terminal_Spikelet", "Flowering/Anthesis","Milking_Dough/Grainfill",
+                                          "Maturity/Grainfill"))
+
+individual_plot = unique(PD2_dist$Timeframe)
+for(i in individual_plot){
+  Plot<- ggplot((data=subset(PD2_dist, Timeframe == i)), aes(y= lat, x= lon, fill= far_near)) + 
+    geom_tile(width=0.20, height=0.20)+
+    scale_fill_manual(values = c("darkblue","steelblue1","lightskyblue1","darkgreen",
+                                 "peachpuff", "tomato", "brown4"))+
+    geom_polygon(data = fortify(background), aes(x=long, y=lat, group=group), fill = NA,
+                 colour = alpha("black"), size = 1)+
+    theme_bw() +
+    theme(
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      text = element_text(size = 12),
+      axis.text.x = element_text(angle = 0, size = 10, colour = "black", hjust = 0.5),
+      axis.text.y = element_text(size = 10, colour = "black"),
+      axis.title.x = element_text(size = 10, face = "bold", colour = "black"),
+      axis.title.y.left = element_text(size = 10, face = "bold", colour = "black"),
+      strip.text = element_text(face = "bold", size=8),
+      legend.text = element_text(size = 12, face = "bold", colour = "black"),
+      legend.title = element_blank(),
+      legend.position = "bottom") +
+    ylab(" ") +
+    xlab("")+
+    facet_grid(PD~Pheno_Stage)+
+    ggtitle(i)
+  
+  ggsave(Plot, file=paste0("E:/Adaptation_Potential/05_Analysis/Plots/Distance/Wasserstein/Top_state/PD2_Topstate_", i,".jpeg"), width = 35, height = 25, units = "cm")
+}
+
+## Plot for PD3
+PD3_dist <- Dist_topstate |> filter(PD %in% c("EP1", "EP2", "EP3", "EP4", "EP5", "EP6", "PD1", "EP7", "PD2",
+                                         "EP8", "EP9", "EP10","EP11", "EP12", "PD3")) |>
+  mutate(PD3_diff=round(dist-PD3, 2),
+         Timeframe = case_when(Case=='Wheat_Overlap_2025_2055' ~ '2040s',
+                               Case=='Wheat_Overlap_2045_2075' ~ '2060s',
+                               Case=='Wheat_Overlap_2065_2095' ~ '2080s'),
+         far_near=case_when(PD3_diff<=-0.20~'< -0.20',
+                            -0.20<PD3_diff & PD3_diff<=-0.10~'-0.20 to -0.10',
+                            -0.10<PD3_diff & PD3_diff<0~'-0.10 to 0',
+                            PD3_diff==0~'0',
+                            0<PD3_diff & PD3_diff<=0.10~'0 to 0.10',
+                            0.10<PD3_diff & PD3_diff<=0.20~'0.10 to 0.20',
+                            PD3_diff>0.20~'> 0.20'))|>
+  na.omit()
+
+
+PD3_dist$PD <- factor(PD3_dist$PD, levels = c("EP1", "EP2", "EP3", "EP4", "EP5", "EP6", "PD1", "EP7", "PD2",
+                                              "EP8", "EP9", "EP10","EP11", "EP12", "PD3"))
+
+PD3_dist$far_near <- factor(PD3_dist$far_near, levels = c("< -0.20", "-0.20 to -0.10", "-0.10 to 0", "0","0 to 0.10",
+                                                          "0.10 to 0.20", "> 0.20"))
+
+PD3_dist$Pheno_Stage <- factor(PD3_dist$Pheno_Stage , 
+                               levels = c("Emergence/Root_growth", "Tillering/Shoot_growth","Jointing/Leaf_inititation",
+                                          "Heading/Terminal_Spikelet", "Flowering/Anthesis","Milking_Dough/Grainfill",
+                                          "Maturity/Grainfill"))
+
+individual_plot = unique(PD3_dist$Timeframe)
+for(i in individual_plot){
+  Plot<- ggplot((data=subset(PD3_dist, Timeframe == i)), aes(y= lat, x= lon, fill= far_near)) + 
+    geom_tile(width=0.20, height=0.20)+
+    scale_fill_manual(values = c("darkblue","steelblue1","lightskyblue1","darkgreen",
+                                 "peachpuff", "tomato", "brown4"))+
+    geom_polygon(data = fortify(background), aes(x=long, y=lat, group=group), fill = NA,
+                 colour = alpha("black"), size = 1)+
+    theme_bw() +
+    theme(
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      text = element_text(size = 12),
+      axis.text.x = element_text(angle = 0, size = 10, colour = "black", hjust = 0.5),
+      axis.text.y = element_text(size = 10, colour = "black"),
+      axis.title.x = element_text(size = 10, face = "bold", colour = "black"),
+      axis.title.y.left = element_text(size = 10, face = "bold", colour = "black"),
+      strip.text = element_text(face = "bold", size=8),
+      legend.text = element_text(size = 12, face = "bold", colour = "black"),
+      legend.title = element_blank(),
+      legend.position = "bottom") +
+    ylab(" ") +
+    xlab("")+
+    facet_grid(PD~Pheno_Stage)+
+    ggtitle(i)
+  
+  ggsave(Plot, file=paste0("E:/Adaptation_Potential/05_Analysis/Plots/Distance/Wasserstein/Top_state/PD3_Topstate_", i,".jpeg"), width = 40, height = 50, units = "cm")
+}
+
+## Plot for PD4
+PD4_dist <- Dist_topstate |> filter(PD %in% c("EP1", "EP2", "EP3", "EP4", "EP5", "EP6", "PD1", "EP7", "PD2",
+                                         "EP8", "EP9", "EP10","EP11", "EP12", "PD3", "EP13", "PD4")) |>
+  mutate(PD4_diff=round(dist-PD4, 2),
+         Timeframe = case_when(Case=='Wheat_Overlap_2025_2055' ~ '2040s',
+                               Case=='Wheat_Overlap_2045_2075' ~ '2060s',
+                               Case=='Wheat_Overlap_2065_2095' ~ '2080s'),
+         far_near=case_when(PD4_diff<=-0.20~'< -0.20',
+                            -0.20<PD4_diff & PD4_diff<=-0.10~'-0.20 to -0.10',
+                            -0.10<PD4_diff & PD4_diff<0~'-0.10 to 0',
+                            PD4_diff==0~'0',
+                            0<PD4_diff & PD4_diff<=0.10~'0 to 0.10',
+                            0.10<PD4_diff & PD4_diff<=0.20~'0.10 to 0.20',
+                            PD4_diff>0.20~'> 0.20')) |>
+  na.omit()
+
+
+PD4_dist$PD <- factor(PD4_dist$PD, levels = c("EP1", "EP2", "EP3", "EP4", "EP5", "EP6", "PD1", "EP7", "PD2",
+                                              "EP8", "EP9", "EP10","EP11", "EP12", "PD3", "EP13", "PD4"))
+
+PD4_dist$far_near <- factor(PD4_dist$far_near, levels = c("< -0.20", "-0.20 to -0.10", "-0.10 to 0", "0","0 to 0.10",
+                                                          "0.10 to 0.20", "> 0.20"))
+
+PD4_dist$Pheno_Stage <- factor(PD4_dist$Pheno_Stage , 
+                               levels = c("Emergence/Root_growth", "Tillering/Shoot_growth","Jointing/Leaf_inititation",
+                                          "Heading/Terminal_Spikelet", "Flowering/Anthesis","Milking_Dough/Grainfill",
+                                          "Maturity/Grainfill"))
+
+individual_plot = unique(PD4_dist$Timeframe)
+for(i in individual_plot){
+  Plot<- ggplot((data=subset(PD4_dist, Timeframe == i)), aes(y= lat, x= lon, fill= far_near)) + 
+    geom_tile(width=0.20, height=0.20)+
+    scale_fill_manual(values = c("darkblue","steelblue1","lightskyblue1","darkgreen",
+                                 "peachpuff", "tomato", "brown4"))+
+    geom_polygon(data = fortify(background), aes(x=long, y=lat, group=group), fill = NA,
+                 colour = alpha("black"), size = 1)+
+    theme_bw() +
+    theme(
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      text = element_text(size = 12),
+      axis.text.x = element_text(angle = 0, size = 10, colour = "black", hjust = 0.5),
+      axis.text.y = element_text(size = 10, colour = "black"),
+      axis.title.x = element_text(size = 10, face = "bold", colour = "black"),
+      axis.title.y.left = element_text(size = 10, face = "bold", colour = "black"),
+      strip.text = element_text(face = "bold", size=8),
+      legend.text = element_text(size = 12, face = "bold", colour = "black"),
+      legend.title = element_blank(),
+      legend.position = "bottom") +
+    ylab(" ") +
+    xlab("")+
+    facet_grid(PD~Pheno_Stage)+
+    ggtitle(i)
+  
+  ggsave(Plot, file=paste0("E:/Adaptation_Potential/05_Analysis/Plots/Distance/Wasserstein/Top_state/PD4_Topstate_", i,".jpeg"), width = 40, height = 60, units = "cm")
+}
+
+```
+
+## Figure 9:Heatmap of the effectiveness of earlier planting for each of the seven states, three future time frames, and four baseline traditional planting dates for a) RCP 4.5 and b) RCP 8.5. 
+
+```{r}
+## Replace to the RCP4.5 file to get that plot, needs to be edited in ppt to join with the pie chart of production
+
+Heatmap <- readRDS("E:/Adaptation_Potential/05_Analysis/Plots/Distance/Heatmap/Top_State/Heatmap_topstates_data_rcp45.rds") |> 
+  filter(Percent>=75) |> 
+  group_by(State,Timeframe,Reference,PD) |> 
+  mutate(count=n()) |> 
+  filter(count>=5) |> 
+  mutate(Color_code=1) |> 
+  ungroup() |> 
+  dplyr::select("climate_proj.x","Case","Timeframe","State","Reference","PD","Pheno_Stage","count","Color_code") |> 
+  pivot_wider(names_from = Pheno_Stage, values_from = Color_code) |> 
+  pivot_longer(cols = 8:14, names_to = "Pheno_Stage", values_to = "Color_code")
+
+Heatmap$Color_code[is.na(Heatmap$Color_code)] <- 0
+
+EP_removed <- Heatmap |> 
+  filter(Pheno_Stage %in% c("Heading/Terminal_Spikelet", "Flowering/Anthesis","Milking_Dough/Grainfill"),
+         Color_code == 0) |> 
+  dplyr::select(Timeframe, State, PD, Reference) |> 
+  distinct()
+
+filtered_data_heatmap <- Heatmap |> 
+  anti_join(EP_removed, by = c("Timeframe", "State", "PD", "Reference"))
+
+filtered_data_heatmap$Pheno_Stage <- factor(filtered_data_heatmap$Pheno_Stage , 
+                                            levels = c("Emergence/Root_growth", "Tillering/Shoot_growth","Jointing/Leaf_inititation",
+                                                       "Heading/Terminal_Spikelet", "Flowering/Anthesis","Milking_Dough/Grainfill",
+                                                       "Maturity/Grainfill"))
+filtered_data_heatmap <- filtered_data_heatmap |> 
+  mutate(new_code=1)
+
+miss_states <- data.frame(
+  climate_proj.x = c("rcp85", "rcp85", "rcp85"), 
+  Case = c("Wheat_Overlap_2025_2055", "Wheat_Overlap_2025_2055", "Wheat_Overlap_2025_2055"),
+  Timeframe = c("2040s", "2040s", "2040s"),
+  State=c("Minnesota", "South Dakota", "Wyoming"),
+  Reference=c("PD1_TradPD","PD1_TradPD","PD1_TradPD"),
+  PD=c("EP1","EP1","EP1"),
+  count=NA,
+  Pheno_Stage=c("Emergence/Root_growth"),
+  Color_code=2,
+  new_code=0)
+
+
+filter2 <- rbind(filtered_data_heatmap, miss_states)
+
+filter2 <- filter2 |> 
+  mutate(new_state = case_when(
+    State == 'North\nDakota' ~ 'ND',
+    State == 'South\nDakota' ~ 'SD',
+    State == 'Washington' ~ 'WA',
+    State == 'Oregon' ~ 'OR',
+    State == 'Montana'~'MT',
+    State == 'Idaho'~'ID',
+    State == 'Minnesota'~'MN',
+    State == 'Wyoming'~'WY'))
+
+filter2 <- rbind(filtered_data_heatmap, miss_states)
+
+filter2 <- filter2 |>
+  mutate(growthstage = case_when(
+    Pheno_Stage == 'Emergence/Root_growth' ~ 'Emergence',
+    Pheno_Stage == 'Tillering/Shoot_growth' ~ 'Tillering',
+    Pheno_Stage == 'Jointing/Leaf_inititation' ~ 'Jointing',
+    Pheno_Stage == 'Heading/Terminal_Spikelet' ~ 'Heading',
+    Pheno_Stage == 'Flowering/Anthesis' ~ 'Flowering',
+    Pheno_Stage == 'Milking_Dough/Grainfill' ~ 'Grain fill',
+    Pheno_Stage == 'Maturity/Grainfill' ~ 'Maturity'),
+    Reference_new = case_when(
+      Reference == 'PD1_TradPD' ~ 'Early',
+      Reference == 'PD2_TradPD' ~ 'Active1',
+      Reference == 'PD3_TradPD' ~ 'Active2',
+      Reference == 'PD4_TradPD' ~ 'Late')
+  )
+
+
+filter2$growthstage <- factor(filter2$growthstage, 
+                              levels = c("Emergence", "Tillering", "Jointing",
+                                         "Heading", "Flowering", "Grain fill",
+                                         "Maturity"))
+
+filter2$Reference_new <- factor(filter2$Reference_new, levels = c("Early", "Active1","Active2", "Late"))
+
+# Wrapping the State names
+filter2$State <- str_wrap(filter2$State, width = 10)
+
+# Factor levels after wrapping
+filter2$State <- factor(filter2$State,
+                        levels = c("North\nDakota", "Montana", "Minnesota", "Idaho",
+                                   "South\nDakota", "Washington", "Oregon", "Wyoming"))
+
+
+# Your plotting code
+newplot <- ggplot((filter2), aes(x = growthstage, y = Timeframe, fill = factor(Color_code))) + 
+  geom_tile() + 
+  # geom_text(aes(label = Color_code), color = "black", size = 4, face = "bold") +
+  theme_bw() +
+  scale_fill_manual(values = c("0" = "black", "1" = "darkgreen", "2" = "lightgrey")) +
+  theme_bw() +
+  theme(strip.background = element_rect(fill = "white")) +
+  ylab("") +
+  xlab("") +
+  theme(strip.text = element_text(colour = "black")) +
+  theme(axis.text.x = element_text(angle = 90, size = 18, face = "bold", colour = "black", vjust = 0.5),
+        axis.text.y = element_text(size = 18, face = "bold", colour = "black"),
+        axis.title.x = element_text(size = 20, face = "bold", colour = "black"),
+        axis.title.y.left = element_text(size = 20, face = "bold", colour = "black"),
+        strip.text.x = element_text(size = 20, face = "bold"), 
+        strip.text.y = element_text(size = 12, face = "bold"),
+        legend.text = element_text(size = 12),
+        legend.position = "bottom",
+        panel.background = element_rect(fill = "lightgrey"),
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  facet_grid(State ~ Reference_new)
+
+# Print the plot
+print(newplot)
+
+ggsave(newplot, file=paste0("E:/Adaptation_Potential/05_Analysis/Plots/Distance/Heatmap/Top_state_window/breed_rcp45.jpeg"), width = 40, height = 30, units = "cm")
+
+```
+## Figure 9 pie chart : production pie chart
+
+```{r}
+## plotting the production piechart
+Production <- read.csv("E:/Adaptation_Potential/01_Data_GIS/Production.csv") |>
+  pivot_longer(cols = 2:3, names_to = "Category", values_to = "Percent_state")
+
+Production$Category <- factor(Production$Category, levels = c("Remaining", "Percent"))
+Production$States <- str_wrap(Production$States, width = 10)
+Production$States <- factor(Production$States,
+                            levels = c("North\nDakota", "Montana", "Minnesota", "Idaho",
+                                       "South\nDakota", "Washington", "Oregon", "Wyoming"))
+
+# Create the plot
+pie_chart <- ggplot(Production, aes(x = "", y = Percent_state, fill = Category)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar("y", start = 0) +
+  theme_void() +
+  scale_fill_manual(values = c("beige", "steelblue")) +
+  facet_grid(States ~ .) +
+  ylab("") +
+  xlab("") +
+  theme(
+    strip.text = element_blank(),  # Remove facet strip text
+    axis.text.x = element_blank(),  # Remove x-axis text
+    axis.text.y = element_blank(),  # Remove y-axis text
+    axis.title.x = element_text(size = 12, face = "bold", colour = "black"),
+    axis.title.y = element_text(size = 12, face = "bold", colour = "black"),
+    strip.background = element_blank(),  # Remove strip background
+    panel.border = element_blank(),  # Remove panel borders
+    legend.text = element_text(size = 12),
+    legend.position = "bottom"
+  ) +
+  geom_text(aes(label = ifelse(Category == "A", paste0(Percent_state, "%"), "")),
+            position = position_stack(vjust = 0.5))
+
+print(pie_chart)
+```
+
+
+## Figure 10: Shrinkage of planing window
+```{r}
+# Plot for Shrinkage of planting weeks
+## For rcp8.5
+Heatmap <- readRDS("E:/Adaptation_Potential/05_Analysis/Plots/Distance/Heatmap/Top_State/Heatmap_topstates_data.rds") |> 
+  filter(Percent>=75) |> 
+  group_by(State,Timeframe,Reference,PD) |> 
+  mutate(count=n()) |> 
+  filter(count>=5) |> 
+  mutate(Color_code=1) |> 
+  ungroup() |> 
+  dplyr::select("climate_proj.x","Case","Timeframe","State","Reference","PD","Pheno_Stage","count","Color_code") |> 
+  pivot_wider(names_from = Pheno_Stage, values_from = Color_code) |> 
+  pivot_longer(cols = 8:14, names_to = "Pheno_Stage", values_to = "Color_code")
+
+Heatmap$Color_code[is.na(Heatmap$Color_code)] <- 0
+
+EP_removed <- Heatmap |> 
+  filter(Pheno_Stage %in% c("Heading/Terminal_Spikelet", "Flowering/Anthesis","Milking_Dough/Grainfill"),
+         Color_code == 0) |> 
+  dplyr::select(Timeframe, State, PD, Reference) |> 
+  distinct()
+
+filtered_data_heatmap <- Heatmap |> 
+  anti_join(EP_removed, by = c("Timeframe", "State", "PD", "Reference"))
+
+filtered_data_heatmap$Pheno_Stage <- factor(filtered_data_heatmap$Pheno_Stage , 
+                                            levels = c("Emergence/Root_growth", "Tillering/Shoot_growth","Jointing/Leaf_inititation",
+                                                       "Heading/Terminal_Spikelet", "Flowering/Anthesis","Milking_Dough/Grainfill",
+                                                       "Maturity/Grainfill"))
+filtered_data_heatmap <- filtered_data_heatmap |> 
+  mutate(new_code=1)
+
+count_rcp85 <- filtered_data_heatmap |> 
+  dplyr::select("climate_proj.x", "Timeframe", "State", "PD") |> 
+  distinct() |> 
+  group_by(Timeframe, State) |> 
+  mutate(week_count=n()) |> 
+  dplyr::select("climate_proj.x", "Timeframe", "State","week_count") |> 
+  distinct()
+
+state_hist <- read.csv("E:/Adaptation_Potential/01_Data_GIS/historical_14weeks.csv")
+
+count_rcp85_merged <- rbind(count_rcp85, state_hist)
+count_rcp85_merged$State <- factor(count_rcp85_merged$State,
+                                   levels = c("North Dakota", "Montana", "Minnesota", "Idaho",
+                                              "South Dakota", "Washington", "Oregon", "Wyoming"))
+count_rcp85_merged$Timeframe <- factor(count_rcp85_merged$Timeframe,
+                                       levels = c("historical", "2040s", "2060s", "2080s"))
+
+shrinkage85 <- ggplot(count_rcp85_merged, aes(x=Timeframe, y=week_count, fill=State)) +
+  geom_bar(stat="identity", position = "dodge")+
+  scale_fill_manual(values=c("#330000","#660000","#993300","#E69F00","#339999","#0072B2","#003399","#332288","#117733"))+
+  theme_bw()+
+  theme(strip.background =element_rect(fill="white"))+
+  ylab("Weeks of planting")+
+  xlab("")+
+  theme(strip.text = element_text(colour = "black"))+
+  theme(axis.text.x = element_text(angle = 90,size = 12,face = "bold",colour = "black", hjust = 1),
+        axis.text.y = element_text(size = 10,face = "bold",colour = "black"),
+        axis.title.x = element_text(size = 12,face = "bold",colour = "black"),
+        axis.title.y.left = element_text(size = 12,face = "bold",colour = "black"),
+        strip.text = element_text(size = 12,face="bold"), legend.text = element_text(size=8),
+        legend.position = "bottom")
+
+## for rcp4.5
+Heatmap <- readRDS("E:/Adaptation_Potential/05_Analysis/Plots/Distance/Heatmap/Top_State/Heatmap_topstates_data_rcp45.rds") |>
+  filter(Percent>=75) |>
+  group_by(State,Timeframe,Reference,PD) |>
+  mutate(count=n()) |>
+  filter(count>=5) |>
+  mutate(Color_code=1) |>
+  ungroup() |>
+  dplyr::select("climate_proj.x","Case","Timeframe","State","Reference","PD","Pheno_Stage","count","Color_code") |>
+  pivot_wider(names_from = Pheno_Stage, values_from = Color_code) |>
+  pivot_longer(cols = 8:14, names_to = "Pheno_Stage", values_to = "Color_code")
+
+Heatmap$Color_code[is.na(Heatmap$Color_code)] <- 0
+
+EP_removed <- Heatmap |>
+  filter(Pheno_Stage %in% c("Heading/Terminal_Spikelet", "Flowering/Anthesis","Milking_Dough/Grainfill"),
+         Color_code == 0) |>
+  dplyr::select(Timeframe, State, PD, Reference) |>
+  distinct()
+
+filtered_data_heatmap <- Heatmap |>
+  anti_join(EP_removed, by = c("Timeframe", "State", "PD", "Reference"))
+
+filtered_data_heatmap$Pheno_Stage <- factor(filtered_data_heatmap$Pheno_Stage ,
+                                            levels = c("Emergence/Root_growth", "Tillering/Shoot_growth","Jointing/Leaf_inititation",
+                                                       "Heading/Terminal_Spikelet", "Flowering/Anthesis","Milking_Dough/Grainfill",
+                                                       "Maturity/Grainfill"))
+filtered_data_heatmap <- filtered_data_heatmap |>
+  mutate(new_code=1)
+
+count_rcp45 <- filtered_data_heatmap |>
+  dplyr::select("climate_proj.x", "Timeframe", "State","PD") |>
+  distinct() |>
+  group_by(Timeframe, State) |>
+  mutate(week_count=n()) |>
+  dplyr::select("climate_proj.x", "Timeframe", "State","week_count") |>
+  distinct()
+
+state_hist <- read.csv("E:/Adaptation_Potential/01_Data_GIS/historical_14weeks.csv")
+
+count_rcp45_merged <- rbind(count_rcp45, state_hist)
+count_rcp45_merged$State <- factor(count_rcp45_merged$State,
+                                   levels = c("North Dakota", "Montana", "Minnesota", "Idaho",
+                                              "South Dakota", "Washington", "Oregon", "Wyoming"))
+count_rcp45_merged$Timeframe <- factor(count_rcp45_merged$Timeframe,
+                                       levels = c("historical", "2040s", "2060s", "2080s"))
+
+shrinkage45 <- ggplot(count_rcp45_merged, aes(x=Timeframe, y=week_count, fill=State)) +
+  geom_bar(stat="identity", position = "dodge")+
+  scale_fill_manual(values=c("#330000","#660000","#993300","#E69F00","#339999","#0072B2","#003399","#332288","#117733"))+
+  theme_bw()+
+  theme(strip.background =element_rect(fill="white"))+
+  ylab("Weeks of planting")+
+  xlab("")+
+  theme(strip.text = element_text(colour = "black"))+
+  theme(axis.text.x = element_text(angle = 90,size = 12,face = "bold",colour = "black", hjust = 1),
+        axis.text.y = element_text(size = 10,face = "bold",colour = "black"),
+        axis.title.x = element_text(size = 12,face = "bold",colour = "black"),
+        axis.title.y.left = element_text(size = 12,face = "bold",colour = "black"),
+        strip.text = element_text(size = 12,face="bold"), legend.text = element_text(size=10),
+        legend.position = "bottom")
+
+print(shrinkage45)
+print(shrinkage85)
+
+```
+
